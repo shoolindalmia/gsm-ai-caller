@@ -1,0 +1,7 @@
+venv/
+__pycache__/
+*.pyc
+data/
+config.yaml
+voices/
+.pytest_cache/

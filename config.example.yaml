@@ -1,0 +1,59 @@
+# GSM AI Caller — copy to /opt/gsm-ai-caller/config.yaml and edit.
+# Everything runs locally: Asterisk + Whisper + Ollama + Piper. No cloud APIs.
+
+db_path: /opt/gsm-ai-caller/data/caller.db
+
+asterisk:
+  ami_host: 127.0.0.1
+  ami_port: 5038
+  ami_user: aicaller
+  ami_secret: CHANGE_ME_AMI_SECRET
+  trunk_endpoint: dinstar        # PJSIP endpoint name in pjsip.conf
+  agent_context: ai-agent        # dialplan context that hands the call to the AI
+
+agent:
+  host: 127.0.0.1
+  port: 9092                     # AudioSocket port Asterisk connects to
+  max_call_seconds: 300
+  no_response_seconds: 10        # caller silent this long -> "Hello?" once, then end
+
+dialer:
+  max_concurrent_calls: 4        # limited by GPU, not by the 32 SIM ports (see README)
+  ring_timeout_sec: 35
+  max_attempts: 3
+  retry_delay_min: 60
+  calling_hours: {start: "10:00", end: "19:00"}
+  dial_prefix: ""                # e.g. "0" if your SIMs need it
+  caller_id: ""
+
+stt:
+  model: large-v3                # small / medium / large-v3
+  device: cuda                   # cuda or cpu
+  compute_type: float16          # float16 on GPU, int8 on CPU
+  language: hi                   # hi, en, or null for auto-detect
+  workers: 4
+
+llm:
+  ollama_url: http://127.0.0.1:11434
+  model: qwen2.5:7b-instruct
+  temperature: 0.4
+  max_tokens: 120
+
+tts:
+  engine: piper                  # piper (fast) or parler (AI4Bharat Indic Parler-TTS, needs GPU)
+  piper_model: /opt/gsm-ai-caller/voices/hi_IN-pratham-medium.onnx
+  parler_model: ai4bharat/indic-parler-tts
+  parler_description: "A female speaker delivers clear, natural Hindi speech at a moderate pace with very clear audio."
+
+vad:
+  energy_threshold_db: -38       # used if webrtcvad is not installed
+  webrtc_aggressiveness: 2
+  end_silence_ms: 700            # pause length that ends the caller's turn
+  min_speech_ms: 250
+  bargein_ms: 300                # caller talking this long interrupts the AI
+
+web:
+  host: 0.0.0.0
+  port: 8080
+  username: admin
+  password: CHANGE_ME_WEB_PASSWORD
