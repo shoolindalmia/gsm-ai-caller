@@ -124,6 +124,10 @@ class DB:
                 (now, r["id"]))
             return dict(r) | {"attempts": r["attempts"] + 1}
 
+    def reset_inflight(self):
+        with self.conn() as c:
+            c.execute("UPDATE contacts SET status='pending' WHERE status IN ('dialing','in_call')")
+
     def stale_contacts(self, status: str, older_than: float):
         with self.conn() as c:
             return [dict(r) for r in c.execute(

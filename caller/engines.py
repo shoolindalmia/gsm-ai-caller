@@ -2,6 +2,8 @@
 import io
 import json
 import logging
+import os
+import sys
 import wave
 from typing import AsyncIterator
 
@@ -13,8 +15,26 @@ from .audio import pcm16_to_float, resample, to_telephone
 log = logging.getLogger(__name__)
 
 
+def _add_cuda_dlls():
+    """On Windows, make pip-installed cuBLAS/cuDNN DLLs visible to faster-whisper (CTranslate2)."""
+    if os.name != "nt":
+        return
+    import importlib.util
+    for pkg in ("nvidia.cublas", "nvidia.cudnn", "nvidia.cuda_nvrtc"):
+        try:
+            spec = importlib.util.find_spec(pkg)
+        except ModuleNotFoundError:
+            continue
+        for loc in (spec.submodule_search_locations or []) if spec else []:
+            d = os.path.join(loc, "bin")
+            if os.path.isdir(d):
+                os.add_dll_directory(d)
+                os.environ["PATH"] = d + os.pathsep + os.environ.get("PATH", "")
+
+
 class WhisperSTT:
     def __init__(self, cfg):
+        _add_cuda_dlls()
         from faster_whisper import WhisperModel
         self.language = cfg.get("language") or None
         self.model = WhisperModel(cfg["model"], device=cfg["device"],
@@ -96,5 +116,63 @@ class ParlerTTS:
         return to_telephone(audio.cpu().numpy().squeeze().astype(np.float32), self.rate)
 
 
+class WindowsTTS:
+    """Built-in Windows voices via SAPI (e.g. Microsoft Kalpana / Hemant for Hindi). Windows only."""
+
+    single_thread = True  # COM objects must stay on the thread that created them
+
+    def __init__(self, cfg):
+        if sys.platform != "win32":
+            raise RuntimeError("tts.engine: windows only works on Windows")
+        self.voice_hint = (cfg.get("windows_voice") or "Hindi").lower()
+        self.rate = int(cfg.get("windows_rate", 0))
+        self._voice = None
+
+    def _init(self):
+        import comtypes.client
+        comtypes.CoInitialize()
+        self._cc = comtypes.client
+        self._voice = comtypes.client.CreateObject("SAPI.SpVoice")
+        # Hindi voices (Kalpana/Hemant) are usually "OneCore" voices, so look there too.
+        cats = [self._voice.GetVoices()]
+        try:
+            cat = comtypes.client.CreateObject("SAPI.SpObjectTokenCategory")
+            cat.SetId(r"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Speech_OneCore\Voices", False)
+            cats.append(cat.EnumerateTokens())
+        except Exception:
+            pass
+        names = []
+        for voices in cats:
+            for i in range(voices.Count):
+                n = voices.Item(i).GetDescription()
+                names.append(n)
+                if self.voice_hint in n.lower():
+                    self._voice.Voice = voices.Item(i)
+                    break
+            else:
+                continue
+            break
+        else:
+            log.warning("no Windows voice matching %r; installed: %s", self.voice_hint, names)
+        self._voice.Rate = self.rate
+        log.info("Windows voice: %s", self._voice.Voice.GetDescription())
+
+    def synth(self, text: str) -> bytes:
+        if self._voice is None:
+            self._init()
+        stream = self._cc.CreateObject("SAPI.SpMemoryStream")
+        fmt = self._cc.CreateObject("SAPI.SpAudioFormat")
+        fmt.Type = 18  # SAFT16kHz16BitMono
+        stream.Format = fmt
+        self._voice.AudioOutputStream = stream
+        self._voice.Speak(text)
+        return to_telephone(bytes(stream.GetData()), 16000)
+
+
 def build_tts(cfg):
-    return ParlerTTS(cfg) if cfg.get("engine") == "parler" else PiperTTS(cfg)
+    engine = cfg.get("engine", "piper")
+    if engine == "parler":
+        return ParlerTTS(cfg)
+    if engine == "windows":
+        return WindowsTTS(cfg)
+    return PiperTTS(cfg)

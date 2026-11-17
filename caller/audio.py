@@ -2,7 +2,10 @@ import math
 
 import numpy as np
 
-from .audiosocket import FRAME_BYTES, SAMPLE_RATE
+SAMPLE_RATE = 8000
+FRAME_BYTES = 320  # 20 ms of 16-bit mono at 8 kHz
+FRAME_SEC = 0.02
+SILENCE = b"\x00" * FRAME_BYTES
 
 try:
     from scipy.signal import resample_poly

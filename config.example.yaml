@@ -1,21 +1,26 @@
-# GSM AI Caller — copy to /opt/gsm-ai-caller/config.yaml and edit.
-# Everything runs locally: Asterisk + Whisper + Ollama + Piper. No cloud APIs.
+# GSM AI Caller (Windows) — setup.ps1 copies this to config.yaml. Edit config.yaml, not this file.
+# Everything runs on this PC: Whisper + Ollama + Piper/Windows voices. No cloud APIs. No Asterisk.
+# Relative paths are relative to the program folder.
 
-db_path: /opt/gsm-ai-caller/data/caller.db
+db_path: data/caller.db
 
-asterisk:
-  ami_host: 127.0.0.1
-  ami_port: 5038
-  ami_user: aicaller
-  ami_secret: CHANGE_ME_AMI_SECRET
-  trunk_endpoint: dinstar        # PJSIP endpoint name in pjsip.conf
-  agent_context: ai-agent        # dialplan context that hands the call to the AI
+sip:
+  gateway_ip: 192.168.1.50       # Dinstar UC2000-VG-32G LAN IP
+  gateway_port: 5060
+  local_ip: auto                 # this PC's LAN IP (auto-detected)
+  local_port: 5060
+  rtp_port_start: 10000
+  rtp_port_end: 10999
+  username: ""                   # only if the Dinstar IP trunk requires authentication
+  password: ""
+  caller_id: ""                  # leave empty: the SIM's own number is shown
+  dial_prefix: ""                # e.g. "0" if your SIMs need it
 
 agent:
-  host: 127.0.0.1
-  port: 9092                     # AudioSocket port Asterisk connects to
   max_call_seconds: 300
   no_response_seconds: 10        # caller silent this long -> "Hello?" once, then end
+  rtp_timeout_seconds: 20        # no audio from the gateway this long -> hang up
+  answer_inbound: true           # AI answers customers calling back on your SIMs
 
 dialer:
   max_concurrent_calls: 4        # limited by GPU, not by the 32 SIM ports (see README)
@@ -23,8 +28,7 @@ dialer:
   max_attempts: 3
   retry_delay_min: 60
   calling_hours: {start: "10:00", end: "19:00"}
-  dial_prefix: ""                # e.g. "0" if your SIMs need it
-  caller_id: ""
+  stagger_sec: 1.0               # gap between starting calls
 
 stt:
   model: large-v3                # small / medium / large-v3
@@ -40,8 +44,10 @@ llm:
   max_tokens: 120
 
 tts:
-  engine: piper                  # piper (fast) or parler (AI4Bharat Indic Parler-TTS, needs GPU)
-  piper_model: /opt/gsm-ai-caller/voices/hi_IN-pratham-medium.onnx
+  engine: piper                  # piper | windows (built-in Kalpana/Hemant voice) | parler (AI4Bharat, GPU)
+  windows_voice: Hindi           # part of the Windows voice name, e.g. Kalpana, Hemant, Heera
+  windows_rate: 0                # -10 (slow) .. 10 (fast)
+  piper_model: voices/hi_IN-pratham-medium.onnx
   parler_model: ai4bharat/indic-parler-tts
   parler_description: "A female speaker delivers clear, natural Hindi speech at a moderate pace with very clear audio."
 
